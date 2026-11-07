@@ -1742,6 +1742,10 @@ fn gpu_culling_bind_group_layout_entries() -> DynamicBindGroupLayoutEntries {
     ))
 }
 
+#[cfg(test)]
+#[path = "gpu_preprocess/depth_pyramid_tests.rs"]
+mod depth_pyramid_tests;
+
 fn gpu_occlusion_culling_bind_group_layout_entries() -> DynamicBindGroupLayoutEntries {
     gpu_culling_bind_group_layout_entries().extend_with_indices((
         (
@@ -1750,7 +1754,9 @@ fn gpu_occlusion_culling_bind_group_layout_entries() -> DynamicBindGroupLayoutEn
         ),
         (
             11,
-            texture_2d(TextureSampleType::Float { filterable: true }),
+            // The R32Float depth pyramid is read using textureLoad, not a
+            // filtering sampler. Requiring filtering excludes valid adapters.
+            texture_2d(TextureSampleType::Float { filterable: false }),
         ),
     ))
 }
