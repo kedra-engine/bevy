@@ -210,6 +210,18 @@ pub struct GltfLoaderSettings {
     pub default_sampler: Option<ImageSamplerDescriptor>,
     /// If true, the loader will ignore sampler data from gltf and use the default sampler.
     pub override_sampler: bool,
+    /// Use each external image asset's own loader settings without glTF overrides.
+    ///
+    /// When true, URI images are requested through the asset server without a
+    /// settings transform. Their metadata (or image-loader defaults when absent)
+    /// owns color space, sampler and asset usage. glTF texture roles, sampler
+    /// overrides and `load_materials` usage do not override those image settings.
+    /// Embedded buffer-view and data-URI images retain their glTF settings.
+    ///
+    /// Defaults to false, preserving glTF-derived image settings. All consumers
+    /// of a shared external image must agree on its settings; this option does
+    /// not change the asset server's path-based identity or reload behavior.
+    pub use_external_image_metadata: bool,
     /// If false, the loader will load gltf json without validation, for unsupported extension it will ignore validation check.
     pub validate: bool,
     /// Overrides the default glTF coordinate conversion setting.
@@ -234,6 +246,7 @@ impl Default for GltfLoaderSettings {
             include_source: false,
             default_sampler: None,
             override_sampler: false,
+            use_external_image_metadata: false,
             validate: true,
             convert_coordinates: None,
             skinned_mesh_bounds_policy: None,
@@ -1257,6 +1270,7 @@ async fn load_image<'a, 'b>(
                     .map_err(|err| GltfError::InvalidImageUri(uri.to_owned(), err))?;
                 Ok(ImageOrPath::Path {
                     path: image_path,
+                    use_metadata: settings.use_external_image_metadata,
                     is_srgb,
                     sampler_descriptor,
                     render_asset_usages: settings.load_materials,
@@ -2001,6 +2015,7 @@ enum ImageOrPath {
     },
     Path {
         path: AssetPath<'static>,
+        use_metadata: bool,
         is_srgb: bool,
         sampler_descriptor: ImageSamplerDescriptor,
         render_asset_usages: RenderAssetUsages,
@@ -2024,17 +2039,24 @@ impl ImageOrPath {
             }
             ImageOrPath::Path {
                 path,
+                use_metadata,
                 is_srgb,
                 sampler_descriptor,
                 render_asset_usages,
-            } => load_context
-                .load_builder()
-                .with_settings(move |settings: &mut ImageLoaderSettings| {
-                    settings.is_srgb = is_srgb;
-                    settings.sampler = ImageSampler::Descriptor(sampler_descriptor.clone());
-                    settings.asset_usage = render_asset_usages;
-                })
-                .load(path),
+            } => {
+                if use_metadata {
+                    load_context.load(path)
+                } else {
+                    load_context
+                        .load_builder()
+                        .with_settings(move |settings: &mut ImageLoaderSettings| {
+                            settings.is_srgb = is_srgb;
+                            settings.sampler = ImageSampler::Descriptor(sampler_descriptor.clone());
+                            settings.asset_usage = render_asset_usages;
+                        })
+                        .load(path)
+                }
+            }
         };
         handles.push(handle);
     }
@@ -2113,6 +2135,7 @@ pub struct MorphTargetNames {
 
 #[cfg(test)]
 mod test {
+    mod external_image_metadata;
     use std::path::Path;
 
     use crate::{Gltf, GltfAssetLabel, GltfLoaderSettings, GltfMaterial, GltfNode, GltfSkin};
@@ -2789,6 +2812,7 @@ mod test {
         assert_eq!(settings.include_source, default.include_source);
         assert_eq!(settings.default_sampler, default.default_sampler);
         assert_eq!(settings.override_sampler, default.override_sampler);
+        assert!(!settings.use_external_image_metadata);
         assert_eq!(settings.validate, default.validate);
     }
 }
