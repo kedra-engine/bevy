@@ -519,12 +519,11 @@ impl ApplicationHandler<WinitUserEvent> for WinitAppRunnerState {
     }
 
     fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
-        // Drop windows while event loop is still active, before TLS destruction.
-        // Prevents panic on macOS when exiting from exclusive fullscreen.
-        WINIT_WINDOWS.with(|ww| ww.borrow_mut().windows.clear());
-
-        let world = self.world_mut();
-        world.clear_all();
+        crate::app_update::exiting(&mut self.app, || {
+            // Drop windows while event loop is still active, before TLS destruction.
+            // Prevents panic on macOS when exiting from exclusive fullscreen.
+            WINIT_WINDOWS.with(|ww| ww.borrow_mut().windows.clear());
+        });
     }
 }
 
@@ -794,6 +793,7 @@ impl WinitAppRunnerState {
         self.forward_bevy_events();
 
         if self.app.plugins_state() == PluginsState::Cleaned {
+            crate::app_update::run(&mut self.app);
             self.app.update();
         }
     }

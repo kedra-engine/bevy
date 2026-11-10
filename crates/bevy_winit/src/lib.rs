@@ -42,6 +42,7 @@ use crate::{
 };
 
 pub mod accessibility;
+pub mod app_update;
 pub mod converters;
 mod cursor;
 mod state;
